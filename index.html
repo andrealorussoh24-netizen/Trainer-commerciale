@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Similatore di role play commerciale con AI</title>
+    <title>Simulatore di role play commmerciale con AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -154,7 +154,7 @@
     </div>
 
     <footer class="text-center py-4 text-sm text-gray-500">
-        Tutti di diritti riservati a Quality Host
+        Tutti di diritti riservati a Quality Host 
     </footer>
 
     <script>
@@ -229,7 +229,9 @@
         });
 
         startBtn.addEventListener('click', () => {
-            if (API_KEY === "INSERISCI_LA_TUA_CHIAVE_API_QUI" || !API_KEY) {
+            // Ho rimosso il controllo sul testo segnaposto per evitare confusione.
+            // Ora controlla solo se la chiave API è assente.
+            if (!API_KEY) {
                 apiKeyModal.classList.remove('hidden');
                 return;
             }
@@ -250,7 +252,7 @@
         sendBtn.addEventListener('click', handleUserMessage);
         userInput.addEventListener('keyup', (event) => {
             if (event.key === 'Enter') {
-                handleUserMessage();
+                handleUser-message();
             }
         });
 
@@ -344,5 +346,3 @@
     </script>
 </body>
 </html>
-
-
