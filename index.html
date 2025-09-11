@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simulatore di role play commmerciale con AI</title>
+    <!-- Caricamento della libreria per creare PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -121,9 +123,12 @@
                  <div id="feedback-content" class="space-y-6 text-gray-700 leading-relaxed">
                      <p class="text-center p-8">Analisi in corso... attendere prego.</p>
                  </div>
-                 <div class="text-center mt-8">
+                 <div class="text-center mt-8 flex justify-center gap-4">
                      <button id="restart-btn" class="bg-gray-700 text-white font-bold py-2 px-6 rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
-                         Inizia una nuova simulazione
+                         Nuova Simulazione
+                     </button>
+                     <button id="download-pdf-btn" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                         Scarica Report PDF
                      </button>
                  </div>
             </div>
@@ -166,6 +171,7 @@
         const endSimulationBtn = document.getElementById('end-simulation-btn');
         const sendBtn = document.getElementById('send-btn');
         const restartBtn = document.getElementById('restart-btn');
+        const downloadPdfBtn = document.getElementById('download-pdf-btn'); // Nuovo pulsante
         
         const userInput = document.getElementById('user-input');
         const chatContainer = document.getElementById('chat-container');
@@ -179,41 +185,28 @@
         const closeModalBtn = document.getElementById('close-modal-btn');
 
         let conversationHistory = [];
+        let rawFeedbackText = ''; // Per conservare il testo del feedback non formattato
         let scenario, persona, product;
 
         // --- INIZIO LOGICA API ---
-        
-        // Chiave API aggiornata.
         const API_KEY = "AIzaSyA8N5ybnBghEzaoY3ilVZJ6V2KZJIX87Bo"; 
-        
         const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
         
         async function callGemini(systemPrompt, userPrompt, currentHistory) {
             const payload = {
                 contents: [
-                    ...currentHistory.map(item => ({
-                        role: item.role === 'user' ? 'user' : 'model',
-                        parts: [{ text: item.parts[0].text }]
-                    })),
-                    {
-                        role: 'user',
-                        parts: [{ text: userPrompt }]
-                    }
+                    ...currentHistory.map(item => ({ role: item.role, parts: item.parts })),
+                    { role: 'user', parts: [{ text: userPrompt }] }
                 ],
-                systemInstruction: {
-                    parts: [{ text: systemPrompt }]
-                },
+                systemInstruction: { parts: [{ text: systemPrompt }] },
             };
-
             try {
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-                if (!response.ok) {
-                    throw new Error(`Errore API: ${response.status} ${response.statusText}`);
-                }
+                if (!response.ok) throw new Error(`Errore API: ${response.status} ${response.statusText}`);
                 const result = await response.json();
                 return result.candidates[0].content.parts[0].text;
             } catch (error) {
@@ -224,43 +217,29 @@
         
         // --- FINE LOGICA API ---
 
-        closeModalBtn.addEventListener('click', () => {
-            apiKeyModal.classList.add('hidden');
-        });
-
+        closeModalBtn.addEventListener('click', () => apiKeyModal.classList.add('hidden'));
         startBtn.addEventListener('click', () => {
-            // Ho rimosso il controllo sul testo segnaposto per evitare confusione.
-            // Ora controlla solo se la chiave API è assente.
             if (!API_KEY) {
                 apiKeyModal.classList.remove('hidden');
                 return;
             }
-
             scenario = document.getElementById('scenario').value;
             persona = document.getElementById('persona').value;
             product = document.getElementById('product').value || "un prodotto/servizio non specificato";
-
             infoScenario.textContent = scenario;
             infoPersona.textContent = persona;
-
             setupScreen.classList.add('hidden');
             simulationScreen.classList.remove('hidden');
-            
             startConversation();
         });
-
         sendBtn.addEventListener('click', handleUserMessage);
         userInput.addEventListener('keyup', (event) => {
-            if (event.key === 'Enter') {
-                handleUser-message();
-            }
+            if (event.key === 'Enter') handleUserMessage();
         });
-
         endSimulationBtn.addEventListener('click', getFeedback);
-        restartBtn.addEventListener('click', () => {
-            window.location.reload();
-        });
-        
+        restartBtn.addEventListener('click', () => window.location.reload());
+        downloadPdfBtn.addEventListener('click', generatePDF); // Evento per il nuovo pulsante
+
         function addMessageToChat(sender, message) {
             const bubble = document.createElement('div');
             bubble.classList.add('chat-bubble', sender === 'user' ? 'user-bubble' : 'ai-bubble');
@@ -272,14 +251,11 @@
         async function startConversation() {
             conversationHistory = [];
             const systemPrompt = `Sei un potenziale cliente. Il tuo nome è Alex. La tua personalità è: ${persona}. Stai partecipando a uno scenario di vendita di tipo '${scenario}' riguardo a questo prodotto: '${product}'. Il tuo obiettivo è rispondere al venditore in modo realistico, basandosi sulla tua personalità. Sii conciso e diretto. Non rivelare mai di essere un'IA. Inizia tu la conversazione con una frase di apertura appropriata per lo scenario.`;
-
             setLoading(true);
             const initialResponse = await callGemini(systemPrompt, "Inizia la conversazione.", []);
             setLoading(false);
-            
             conversationHistory.push({ role: 'model', parts: [{ text: initialResponse }] });
             addMessageToChat('ai', initialResponse);
-            
             userInput.disabled = false;
             sendBtn.disabled = false;
             userInput.focus();
@@ -288,17 +264,13 @@
         async function handleUserMessage() {
             const message = userInput.value.trim();
             if (!message) return;
-
             addMessageToChat('user', message);
             conversationHistory.push({ role: 'user', parts: [{ text: message }] });
             userInput.value = '';
-
             const systemPrompt = `Sei un potenziale cliente di nome Alex. La tua personalità è: ${persona}. Stai partecipando a uno scenario di vendita di tipo '${scenario}' riguardo a questo prodotto: '${product}'. Rispondi in modo realistico. Sii conciso e diretto. Non rivelare mai di essere un'IA.`;
-            
             setLoading(true);
             const aiResponse = await callGemini(systemPrompt, message, conversationHistory);
             setLoading(false);
-            
             addMessageToChat('ai', aiResponse);
             conversationHistory.push({ role: 'model', parts: [{ text: aiResponse }] });
         }
@@ -306,27 +278,111 @@
         async function getFeedback() {
             simulationScreen.classList.add('hidden');
             feedbackScreen.classList.remove('hidden');
-
             const transcript = conversationHistory.map(item => `${item.role === 'user' ? 'Venditore' : 'Cliente'}: ${item.parts[0].text}`).join('\n');
-            const feedbackPrompt = `Sei un coach di vendita di fama mondiale. Analizza la seguente trascrizione di un role play di vendita. Fornisci un feedback costruttivo, conciso e facile da capire in ITALIANO. Struttura il feedback in tre sezioni con dei titoli in grassetto: **Punti di Forza**, **Aree di Miglioramento** e **Suggerimenti Pratici**. Sii specifico nei tuoi consigli. Usa elenchi puntati per rendere il feedback più leggibile. Non aggiungere introduzioni o conclusioni superflue, vai dritto al punto.
-            
-            Ecco la trascrizione:
-            ---
-            ${transcript}
-            ---`;
-            
+            const feedbackPrompt = `Sei un coach di vendita di fama mondiale. Analizza la seguente trascrizione di un role play di vendita. Fornisci un feedback costruttivo, conciso e facile da capire in ITALIANO. Struttura il feedback in tre sezioni con dei titoli in grassetto: **Punti di Forza**, **Aree di Miglioramento** e **Suggerimenti Pratici**. Sii specifico nei tuoi consigli. Usa elenchi puntati per rendere il feedback più leggibile. Non aggiungere introduzioni o conclusioni superflue, vai dritto al punto.\n\nEcco la trascrizione:\n---\n${transcript}\n---`;
             const feedbackText = await callGemini(feedbackPrompt, "Analizza questa trascrizione.", []);
-            
-            // Format feedback with HTML
+            rawFeedbackText = feedbackText; // Salvo il testo grezzo per il PDF
             const formattedFeedback = feedbackText
-                .replace(/\*\*(.*?)\*\*/g, '<h3 class="text-lg font-semibold text-gray-800 mt-4 mb-2">$1</h3>') // Titles
-                .replace(/\* (.*?)(?=\n\*|\n\n|$)/g, '<li class="ml-5 list-disc">$1</li>') // List items
-                .replace(/(\r\n|\n|\r)/gm, '<br>') // Line breaks
-                .replace(/<br><li/g, '<li')
-                .replace(/<\/li><br>/g, '</li>');
-
+                .replace(/\*\*(.*?)\*\*/g, '<h3 class="text-lg font-semibold text-gray-800 mt-4 mb-2">$1</h3>')
+                .replace(/\* (.*?)(?=\n\*|\n\n|$)/g, '<li class="ml-5 list-disc">$1</li>')
+                .replace(/(\r\n|\n|\r)/gm, '<br>')
+                .replace(/<br><li/g, '<li').replace(/<\/li><br>/g, '</li>');
             feedbackContent.innerHTML = `<div class="prose max-w-none">${formattedFeedback.replace(/<br>/g, '\n').replace(/<\/li>\n/g, '</li>').replace(/\n<h3/g, '<h3')}</div>`;
+        }
 
+        // --- NUOVA FUNZIONE PER GENERARE IL PDF A DUE COLONNE ---
+        function generatePDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const margin = 15;
+            const pageHeight = doc.internal.pageSize.height;
+            const pageWidth = doc.internal.pageSize.width;
+            let currentY = 20;
+
+            // Funzione per aggiungere testo con a capo automatico (usata per il riepilogo)
+            function addWrappedText(text, x, y) {
+                const maxWidth = pageWidth - (margin * 2);
+                const lines = doc.splitTextToSize(text, maxWidth);
+                doc.text(lines, x, y);
+                return y + (lines.length * 5);
+            }
+
+            // Titolo
+            doc.setFontSize(18);
+            doc.text('Report Simulazione di Vendita', margin, currentY);
+            currentY += 10;
+            
+            // Riepilogo (full width)
+            doc.setFontSize(14);
+            doc.text('Riepilogo Simulazione', margin, currentY);
+            currentY += 8;
+            doc.setFontSize(11);
+            currentY = addWrappedText(`Scenario: ${scenario}`, margin, currentY);
+            currentY = addWrappedText(`Personalità Cliente: ${persona}`, margin, currentY);
+            currentY = addWrappedText(`Prodotto: ${product}`, margin, currentY);
+            currentY += 15; // Più spazio prima delle colonne
+
+            // Impostazione Colonne
+            const leftColumnX = margin;
+            const rightColumnX = pageWidth / 2 + 5;
+            const columnWidth = (pageWidth / 2) - margin - 5;
+            const startYColumns = currentY;
+
+            // Intestazioni Colonne
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Trascrizione Conversazione', leftColumnX, startYColumns);
+            doc.text('Analisi del Sales Coach', rightColumnX, startYColumns);
+            doc.setFont('helvetica', 'normal');
+            currentY += 8;
+
+            // Preparazione Testi per le Colonne
+            doc.setFontSize(9);
+            const transcriptText = conversationHistory.map(item => `${item.role === 'user' ? 'Venditore' : 'Cliente'}: ${item.parts[0].text}`).join('\n\n');
+            const transcriptLines = doc.splitTextToSize(transcriptText, columnWidth);
+            const feedbackLines = doc.splitTextToSize(rawFeedbackText, columnWidth);
+
+            let leftY = currentY;
+            let rightY = currentY;
+            const maxLines = Math.max(transcriptLines.length, feedbackLines.length);
+            const lineHeight = 4.5;
+
+            for (let i = 0; i < maxLines; i++) {
+                // Controllo cambio pagina
+                if (leftY > pageHeight - margin || rightY > pageHeight - margin) {
+                    doc.addPage();
+                    leftY = margin;
+                    rightY = margin;
+                    // Ripeti intestazioni sulla nuova pagina
+                    doc.setFontSize(12);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('Trascrizione Conversazione (continua)', leftColumnX, leftY);
+                    doc.text('Analisi del Sales Coach (continua)', rightColumnX, leftY);
+                    doc.setFont('helvetica', 'normal');
+                    leftY += 8;
+                    rightY += 8;
+                    doc.setFontSize(9);
+                }
+
+                // Stampa riga colonna sinistra
+                if (i < transcriptLines.length) {
+                    doc.text(transcriptLines[i], leftColumnX, leftY);
+                    leftY += lineHeight;
+                }
+                
+                // Stampa riga colonna destra
+                if (i < feedbackLines.length) {
+                    doc.text(feedbackLines[i], rightColumnX, rightY);
+                    rightY += lineHeight;
+                }
+
+                // Allinea le Y per la riga successiva per mantenere le righe parallele
+                const nextY = Math.max(leftY, rightY);
+                leftY = nextY;
+                rightY = nextY;
+            }
+            
+            doc.save('report-simulazione.pdf');
         }
         
         function setLoading(isLoading) {
