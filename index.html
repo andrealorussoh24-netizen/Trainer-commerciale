@@ -6,8 +6,10 @@
     <title>Simulatore di role play commmerciale con AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Libreria per leggere i file PDF -->
+    <!-- Librerie per leggere e creare PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
     <script>
         // Configurazione necessaria per pdf.js
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js';
@@ -133,10 +135,13 @@
                  <div id="feedback-content" class="space-y-6 text-gray-700 leading-relaxed">
                      <p class="text-center p-8">Analisi in corso... attendere prego.</p>
                  </div>
-                 <div class="text-center mt-8">
+                 <div class="text-center mt-8 space-x-4">
                      <button id="restart-btn" class="bg-gray-700 text-white font-bold py-2 px-6 rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
                          Inizia una nuova simulazione
                      </button>
+                     <button id="download-pdf-btn" class="hidden bg-green-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                        Scarica Report PDF
+                    </button>
                  </div>
             </div>
         </div>
@@ -170,6 +175,8 @@
     </footer>
 
     <script>
+        const { jsPDF } = window.jspdf;
+
         const setupScreen = document.getElementById('setup-screen');
         const simulationScreen = document.getElementById('simulation-screen');
         const feedbackScreen = document.getElementById('feedback-screen');
@@ -178,6 +185,7 @@
         const endSimulationBtn = document.getElementById('end-simulation-btn');
         const sendBtn = document.getElementById('send-btn');
         const restartBtn = document.getElementById('restart-btn');
+        const downloadPdfBtn = document.getElementById('download-pdf-btn');
         
         const userInput = document.getElementById('user-input');
         const chatContainer = document.getElementById('chat-container');
@@ -192,6 +200,7 @@
 
         let conversationHistory = [];
         let scenario, persona, product, objections;
+        let structuredFeedback = null;
 
         // --- INIZIO LOGICA API ---
         const API_KEY = "AIzaSyA8N5ybnBghEzaoY3ilVZJ6V2KZJIX87Bo";
@@ -291,7 +300,7 @@
                 } catch (error) {
                     startBtn.disabled = false;
                     startBtn.textContent = 'Inizia Simulazione';
-                    return; // Interrompe l'avvio se il PDF non è leggibile
+                    return;
                 }
             }
             
@@ -318,6 +327,7 @@
         restartBtn.addEventListener('click', () => {
             window.location.reload();
         });
+        downloadPdfBtn.addEventListener('click', generatePdfReport);
         
         function addMessageToChat(sender, message) {
             const bubble = document.createElement('div');
@@ -329,6 +339,7 @@
 
         async function startConversation() {
             conversationHistory = [];
+            structuredFeedback = null;
             let systemPrompt = `Sei un potenziale cliente. Il tuo nome è Alex. La tua personalità è: ${persona}. Stai partecipando a uno scenario di vendita di tipo '${scenario}' riguardo a questo prodotto: '${product}'. Il tuo obiettivo è rispondere al venditore in modo realistico, basandosi sulla tua personalità. Sii conciso e diretto. Non rivelare mai di essere un'IA.`;
 
             if (objections) {
@@ -376,12 +387,7 @@
             feedbackScreen.classList.remove('hidden');
 
             const transcript = conversationHistory.map(item => `${item.role === 'user' ? 'Venditore' : 'Cliente'}: ${item.parts[0].text}`).join('\n');
-            const feedbackPrompt = `Sei un coach di vendita di fama mondiale. Analizza la seguente trascrizione di un role play di vendita. Fornisci un feedback costruttivo, conciso e facile da capire in ITALIANO. Struttura il feedback in tre sezioni con dei titoli in grassetto: **Punti di Forza**, **Aree di Miglioramento** e **Suggerimenti Pratici**. Sii specifico nei tuoi consigli. Usa elenchi puntati per rendere il feedback più leggibile. Non aggiungere introduzioni o conclusioni superflue, vai dritto al punto.
-            
-            Ecco la trascrizione:
-            ---
-            ${transcript}
-            ---`;
+            const feedbackPrompt = `Sei un coach di vendita di fama mondiale. Analizza la seguente trascrizione di un role play di vendita. Fornisci un feedback costruttivo, conciso e facile da capire in ITALIANO. Struttura il feedback in tre sezioni con dei titoli in grassetto: **Punti di Forza**, **Aree di Miglioramento** e **Suggerimenti Pratici**. Sii specifico nei tuoi consigli. Usa elenchi puntati per rendere il feedback più leggibile. Non aggiungere introduzioni o conclusioni superflue, vai dritto al punto.\n\nEcco la trascrizione:\n---\n${transcript}\n---`;
             
             const feedbackText = await callGemini(feedbackPrompt, "Analizza questa trascrizione.", []);
             
@@ -393,6 +399,44 @@
                 .replace(/<\/li><br>/g, '</li>');
 
             feedbackContent.innerHTML = `<div class="prose max-w-none">${formattedFeedback.replace(/<br>/g, '\n').replace(/<\/li>\n/g, '</li>').replace(/\n<h3/g, '<h3')}</div>`;
+            
+            // Seconda chiamata per il feedback strutturato per il PDF
+            const detailedFeedbackPrompt = `Sei un sales coach esperto. Analizza la seguente trascrizione di vendita. Il tuo compito è fornire consigli specifici per ogni blocco della conversazione. Rispondi ESCLUSIVAMENTE con un oggetto JSON valido, senza testo introduttivo o conclusivo. L'oggetto JSON deve essere un array di oggetti. Ogni oggetto deve avere due chiavi: "dialogo" e "consiglio". Nella chiave "dialogo", inserisci una parte della conversazione (uno o due scambi tra Cliente e Venditore). Nella chiave "consiglio", inserisci un consiglio breve e pratico (massimo 2 frasi) relativo a quella specifica parte del dialogo. Ecco la trascrizione:\n---\n${transcript}\n---`;
+
+            const structuredFeedbackText = await callGemini(detailedFeedbackPrompt, "Analizza questa trascrizione per un report dettagliato.", []);
+            try {
+                structuredFeedback = JSON.parse(structuredFeedbackText);
+                downloadPdfBtn.classList.remove('hidden'); // Mostra il pulsante solo se il feedback è pronto
+            } catch (e) {
+                console.error("Impossibile analizzare il feedback strutturato:", e);
+                structuredFeedback = null;
+            }
+        }
+
+        function generatePdfReport() {
+            if (!structuredFeedback) {
+                alert("Il report dettagliato non è ancora pronto o si è verificato un errore.");
+                return;
+            }
+
+            const doc = new jsPDF();
+            
+            doc.setFontSize(18);
+            doc.text("Report Analisi di Vendita", 14, 22);
+            doc.setFontSize(11);
+            doc.text(`Scenario: ${scenario}`, 14, 30);
+            doc.text(`Personalità Cliente: ${persona}`, 14, 36);
+
+            const tableColumn = ["Conversazione", "Consigli del Coach"];
+            const tableRows = [];
+
+            structuredFeedback.forEach(item => {
+                const row = [item.dialogo, item.consiglio];
+                tableRows.push(row);
+            });
+
+            doc.autoTable(tableColumn, tableRows, { startY: 50 });
+            doc.save('report-simulazione-vendita.pdf');
         }
         
         function setLoading(isLoading) {
