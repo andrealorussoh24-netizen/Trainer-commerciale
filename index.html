@@ -4,10 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simulatore di role play commmerciale con AI</title>
-    <!-- Caricamento della libreria per creare PDF -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Libreria per leggere i file PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
+    <script>
+        // Configurazione necessaria per pdf.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js';
+    </script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -42,7 +46,7 @@
 
     <header class="bg-white shadow-md">
         <div class="max-w-5xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
-            <h1 class="text-3xl font-bold text-gray-900">Simulatore per il role play <span class="text-blue-600">IA</span></h1>
+            <h1 class="text-3xl font-bold text-gray-900">Simulatore di Role Play Commerciale <span class="text-blue-600">IA</span></h1>
             <p class="text-gray-600 mt-1">Affina le tue tecniche di vendita interagendo con un cliente virtuale.</p>
         </div>
     </header>
@@ -55,7 +59,7 @@
             </div>
             
             <div>
-                <label for="scenario" class="block text-sm font-medium text-gray-700">Scenario di Vendita</label>
+                <label for="scenario" class="block text-sm font-medium text-gray-700">Scenario di vendita</label>
                 <select id="scenario" class="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                     <option value="Chiamata a freddo">Chiamata a freddo</option>
                     <option value="Gestione obiezione sul prezzo">Gestione obiezione sul prezzo</option>
@@ -66,13 +70,13 @@
             </div>
 
             <div>
-                <label for="persona" class="block text-sm font-medium text-gray-700">Personalità del Cliente IA</label>
+                <label for="persona" class="block text-sm font-medium text-gray-700">Personalità del cliente IA</label>
                 <select id="persona" class="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                    <option value="Cliente Scettico">Cliente scettico</option>
-                    <option value="Cliente Interessato ma Indeciso">Cliente Interessato ma indeciso</option>
+                    <option value="Cliente Scettico">Cliente Scettico</option>
+                    <option value="Cliente Interessato ma Indeciso">Cliente Interessato ma Indeciso</option>
                     <option value="Cliente Molto Occupato">Cliente Molto Occupato</option>
-                    <option value="Cliente Analitico (vuole dati e dettagli)">Cliente analitico (vuole dati e dettagli)</option>
-                    <option value="Cliente Amichevole e Loquace">Cliente Amichevole e loquace</option>
+                    <option value="Cliente Analitico (vuole dati e dettagli)">Cliente Analitico (vuole dati e dettagli)</option>
+                    <option value="Cliente Amichevole e Loquace">Cliente Amichevole e Loquace</option>
                 </select>
             </div>
 
@@ -81,9 +85,15 @@
                 <textarea id="product" rows="3" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="Es: Un software CRM basato su cloud per piccole e medie imprese che automatizza le attività di vendita e marketing."></textarea>
             </div>
 
+            <div>
+                <label for="objections-file" class="block text-sm font-medium text-gray-700">Carica PDF con obiezioni (Opzionale)</label>
+                <input type="file" id="objections-file" accept=".pdf" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                <p id="file-status" class="text-xs text-gray-500 mt-1"></p>
+            </div>
+
             <div class="text-right">
                 <button id="start-btn" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-transform transform hover:scale-105">
-                    Inizia simulazione
+                    Inizia Simulazione
                 </button>
             </div>
         </div>
@@ -123,12 +133,9 @@
                  <div id="feedback-content" class="space-y-6 text-gray-700 leading-relaxed">
                      <p class="text-center p-8">Analisi in corso... attendere prego.</p>
                  </div>
-                 <div class="text-center mt-8 flex justify-center gap-4">
+                 <div class="text-center mt-8">
                      <button id="restart-btn" class="bg-gray-700 text-white font-bold py-2 px-6 rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
-                         Nuova simulazione
-                     </button>
-                     <button id="download-pdf-btn" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                         Scarica report (PDF)
+                         Inizia una nuova simulazione
                      </button>
                  </div>
             </div>
@@ -171,7 +178,6 @@
         const endSimulationBtn = document.getElementById('end-simulation-btn');
         const sendBtn = document.getElementById('send-btn');
         const restartBtn = document.getElementById('restart-btn');
-        const downloadPdfBtn = document.getElementById('download-pdf-btn'); // Nuovo pulsante
         
         const userInput = document.getElementById('user-input');
         const chatContainer = document.getElementById('chat-container');
@@ -185,21 +191,29 @@
         const closeModalBtn = document.getElementById('close-modal-btn');
 
         let conversationHistory = [];
-        let rawFeedbackText = ''; // Per conservare il testo del feedback non formattato
-        let scenario, persona, product;
+        let scenario, persona, product, objections;
 
         // --- INIZIO LOGICA API ---
-        const API_KEY = "AIzaSyA8N5ybnBghEzaoY3ilVZJ6V2KZJIX87Bo"; 
+        const API_KEY = "AIzaSyA8N5ybnBghEzaoY3ilVZJ6V2KZJIX87Bo";
         const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
         
         async function callGemini(systemPrompt, userPrompt, currentHistory) {
             const payload = {
                 contents: [
-                    ...currentHistory.map(item => ({ role: item.role, parts: item.parts })),
-                    { role: 'user', parts: [{ text: userPrompt }] }
+                    ...currentHistory.map(item => ({
+                        role: item.role === 'user' ? 'user' : 'model',
+                        parts: [{ text: item.parts[0].text }]
+                    })),
+                    {
+                        role: 'user',
+                        parts: [{ text: userPrompt }]
+                    }
                 ],
-                systemInstruction: { parts: [{ text: systemPrompt }] },
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
             };
+
             try {
                 const response = await fetch(API_URL, {
                     method: 'POST',
@@ -215,31 +229,96 @@
             }
         }
         
-        // --- FINE LOGICA API ---
+        // --- FUNZIONE PER LEGGERE PDF ---
+        async function readPdfFile(file) {
+            const fileStatus = document.getElementById('file-status');
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = async function() {
+                    try {
+                        const typedarray = new Uint8Array(this.result);
+                        const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                        let fullText = '';
+                        for (let i = 1; i <= pdf.numPages; i++) {
+                            const page = await pdf.getPage(i);
+                            const textContent = await page.getTextContent();
+                            const pageText = textContent.items.map(item => item.str).join(' ');
+                            fullText += pageText + ' ';
+                        }
+                        fileStatus.textContent = `"${file.name}" caricato con successo.`;
+                        fileStatus.style.color = 'green';
+                        resolve(fullText.trim());
+                    } catch (error) {
+                        console.error('Errore durante la lettura del PDF:', error);
+                        fileStatus.textContent = 'Errore: Impossibile leggere il file PDF.';
+                        fileStatus.style.color = 'red';
+                        reject('Impossibile leggere il file PDF.');
+                    }
+                };
+                reader.onerror = () => {
+                     fileStatus.textContent = 'Errore durante il caricamento del file.';
+                     fileStatus.style.color = 'red';
+                     reject('Errore file');
+                }
+                reader.readAsArrayBuffer(file);
+            });
+        }
 
-        closeModalBtn.addEventListener('click', () => apiKeyModal.classList.add('hidden'));
-        startBtn.addEventListener('click', () => {
+        closeModalBtn.addEventListener('click', () => {
+            apiKeyModal.classList.add('hidden');
+        });
+
+        startBtn.addEventListener('click', async () => {
             if (!API_KEY) {
                 apiKeyModal.classList.remove('hidden');
                 return;
             }
+            
+            startBtn.disabled = true;
+            startBtn.textContent = 'Caricamento...';
+
             scenario = document.getElementById('scenario').value;
             persona = document.getElementById('persona').value;
             product = document.getElementById('product').value || "un prodotto/servizio non specificato";
+            
+            const fileInput = document.getElementById('objections-file');
+            const file = fileInput.files[0];
+            objections = '';
+
+            if (file) {
+                try {
+                    objections = await readPdfFile(file);
+                } catch (error) {
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'Inizia Simulazione';
+                    return; // Interrompe l'avvio se il PDF non è leggibile
+                }
+            }
+            
+            startBtn.disabled = false;
+            startBtn.textContent = 'Inizia Simulazione';
+
             infoScenario.textContent = scenario;
             infoPersona.textContent = persona;
+
             setupScreen.classList.add('hidden');
             simulationScreen.classList.remove('hidden');
+            
             startConversation();
         });
+
         sendBtn.addEventListener('click', handleUserMessage);
         userInput.addEventListener('keyup', (event) => {
-            if (event.key === 'Enter') handleUserMessage();
+            if (event.key === 'Enter') {
+                handleUserMessage();
+            }
         });
-        endSimulationBtn.addEventListener('click', getFeedback);
-        restartBtn.addEventListener('click', () => window.location.reload());
-        downloadPdfBtn.addEventListener('click', generatePDF); // Evento per il nuovo pulsante
 
+        endSimulationBtn.addEventListener('click', getFeedback);
+        restartBtn.addEventListener('click', () => {
+            window.location.reload();
+        });
+        
         function addMessageToChat(sender, message) {
             const bubble = document.createElement('div');
             bubble.classList.add('chat-bubble', sender === 'user' ? 'user-bubble' : 'ai-bubble');
@@ -250,12 +329,21 @@
 
         async function startConversation() {
             conversationHistory = [];
-            const systemPrompt = `Sei un potenziale cliente. Il tuo nome è Alex. La tua personalità è: ${persona}. Stai partecipando a uno scenario di vendita di tipo '${scenario}' riguardo a questo prodotto: '${product}'. Il tuo obiettivo è rispondere al venditore in modo realistico, basandosi sulla tua personalità. Sii conciso e diretto. Non rivelare mai di essere un'IA. Inizia tu la conversazione con una frase di apertura appropriata per lo scenario.`;
+            let systemPrompt = `Sei un potenziale cliente. Il tuo nome è Alex. La tua personalità è: ${persona}. Stai partecipando a uno scenario di vendita di tipo '${scenario}' riguardo a questo prodotto: '${product}'. Il tuo obiettivo è rispondere al venditore in modo realistico, basandosi sulla tua personalità. Sii conciso e diretto. Non rivelare mai di essere un'IA.`;
+
+            if (objections) {
+                systemPrompt += ` Durante la conversazione, cerca di sollevare una o più delle seguenti obiezioni specifiche, che sono state estratte da un documento: '${objections}'.`;
+            }
+
+            systemPrompt += ` Inizia tu la conversazione con una frase di apertura appropriata per lo scenario.`;
+
             setLoading(true);
             const initialResponse = await callGemini(systemPrompt, "Inizia la conversazione.", []);
             setLoading(false);
+            
             conversationHistory.push({ role: 'model', parts: [{ text: initialResponse }] });
             addMessageToChat('ai', initialResponse);
+            
             userInput.disabled = false;
             sendBtn.disabled = false;
             userInput.focus();
@@ -264,13 +352,21 @@
         async function handleUserMessage() {
             const message = userInput.value.trim();
             if (!message) return;
+
             addMessageToChat('user', message);
             conversationHistory.push({ role: 'user', parts: [{ text: message }] });
             userInput.value = '';
-            const systemPrompt = `Sei un potenziale cliente di nome Alex. La tua personalità è: ${persona}. Stai partecipando a uno scenario di vendita di tipo '${scenario}' riguardo a questo prodotto: '${product}'. Rispondi in modo realistico. Sii conciso e diretto. Non rivelare mai di essere un'IA.`;
+
+            let systemPrompt = `Sei un potenziale cliente di nome Alex. La tua personalità è: ${persona}. Stai partecipando a uno scenario di vendita di tipo '${scenario}' riguardo a questo prodotto: '${product}'. Rispondi in modo realistico. Sii conciso e diretto. Non rivelare mai di essere un'IA.`;
+
+            if (objections) {
+                systemPrompt += ` Ricorda di usare le obiezioni che ti sono state date, se pertinenti: '${objections}'.`;
+            }
+            
             setLoading(true);
             const aiResponse = await callGemini(systemPrompt, message, conversationHistory);
             setLoading(false);
+            
             addMessageToChat('ai', aiResponse);
             conversationHistory.push({ role: 'model', parts: [{ text: aiResponse }] });
         }
@@ -278,111 +374,25 @@
         async function getFeedback() {
             simulationScreen.classList.add('hidden');
             feedbackScreen.classList.remove('hidden');
+
             const transcript = conversationHistory.map(item => `${item.role === 'user' ? 'Venditore' : 'Cliente'}: ${item.parts[0].text}`).join('\n');
-            const feedbackPrompt = `Sei un coach di vendita di fama mondiale. Analizza la seguente trascrizione di un role play di vendita. Fornisci un feedback costruttivo, conciso e facile da capire in ITALIANO. Struttura il feedback in tre sezioni con dei titoli in grassetto: **Punti di Forza**, **Aree di Miglioramento** e **Suggerimenti Pratici**. Sii specifico nei tuoi consigli. Usa elenchi puntati per rendere il feedback più leggibile. Non aggiungere introduzioni o conclusioni superflue, vai dritto al punto.\n\nEcco la trascrizione:\n---\n${transcript}\n---`;
+            const feedbackPrompt = `Sei un coach di vendita di fama mondiale. Analizza la seguente trascrizione di un role play di vendita. Fornisci un feedback costruttivo, conciso e facile da capire in ITALIANO. Struttura il feedback in tre sezioni con dei titoli in grassetto: **Punti di Forza**, **Aree di Miglioramento** e **Suggerimenti Pratici**. Sii specifico nei tuoi consigli. Usa elenchi puntati per rendere il feedback più leggibile. Non aggiungere introduzioni o conclusioni superflue, vai dritto al punto.
+            
+            Ecco la trascrizione:
+            ---
+            ${transcript}
+            ---`;
+            
             const feedbackText = await callGemini(feedbackPrompt, "Analizza questa trascrizione.", []);
-            rawFeedbackText = feedbackText; // Salvo il testo grezzo per il PDF
+            
             const formattedFeedback = feedbackText
                 .replace(/\*\*(.*?)\*\*/g, '<h3 class="text-lg font-semibold text-gray-800 mt-4 mb-2">$1</h3>')
                 .replace(/\* (.*?)(?=\n\*|\n\n|$)/g, '<li class="ml-5 list-disc">$1</li>')
                 .replace(/(\r\n|\n|\r)/gm, '<br>')
-                .replace(/<br><li/g, '<li').replace(/<\/li><br>/g, '</li>');
+                .replace(/<br><li/g, '<li')
+                .replace(/<\/li><br>/g, '</li>');
+
             feedbackContent.innerHTML = `<div class="prose max-w-none">${formattedFeedback.replace(/<br>/g, '\n').replace(/<\/li>\n/g, '</li>').replace(/\n<h3/g, '<h3')}</div>`;
-        }
-
-        // --- NUOVA FUNZIONE PER GENERARE IL PDF A DUE COLONNE ---
-        function generatePDF() {
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            const margin = 15;
-            const pageHeight = doc.internal.pageSize.height;
-            const pageWidth = doc.internal.pageSize.width;
-            let currentY = 20;
-
-            // Funzione per aggiungere testo con a capo automatico (usata per il riepilogo)
-            function addWrappedText(text, x, y) {
-                const maxWidth = pageWidth - (margin * 2);
-                const lines = doc.splitTextToSize(text, maxWidth);
-                doc.text(lines, x, y);
-                return y + (lines.length * 5);
-            }
-
-            // Titolo
-            doc.setFontSize(18);
-            doc.text('Report Simulazione di Vendita', margin, currentY);
-            currentY += 10;
-            
-            // Riepilogo (full width)
-            doc.setFontSize(14);
-            doc.text('Riepilogo Simulazione', margin, currentY);
-            currentY += 8;
-            doc.setFontSize(11);
-            currentY = addWrappedText(`Scenario: ${scenario}`, margin, currentY);
-            currentY = addWrappedText(`Personalità Cliente: ${persona}`, margin, currentY);
-            currentY = addWrappedText(`Prodotto: ${product}`, margin, currentY);
-            currentY += 15; // Più spazio prima delle colonne
-
-            // Impostazione Colonne
-            const leftColumnX = margin;
-            const rightColumnX = pageWidth / 2 + 5;
-            const columnWidth = (pageWidth / 2) - margin - 5;
-            const startYColumns = currentY;
-
-            // Intestazioni Colonne
-            doc.setFontSize(12);
-            doc.setFont('helvetica', 'bold');
-            doc.text('Trascrizione Conversazione', leftColumnX, startYColumns);
-            doc.text('Analisi del Sales Coach', rightColumnX, startYColumns);
-            doc.setFont('helvetica', 'normal');
-            currentY += 8;
-
-            // Preparazione Testi per le Colonne
-            doc.setFontSize(9);
-            const transcriptText = conversationHistory.map(item => `${item.role === 'user' ? 'Venditore' : 'Cliente'}: ${item.parts[0].text}`).join('\n\n');
-            const transcriptLines = doc.splitTextToSize(transcriptText, columnWidth);
-            const feedbackLines = doc.splitTextToSize(rawFeedbackText, columnWidth);
-
-            let leftY = currentY;
-            let rightY = currentY;
-            const maxLines = Math.max(transcriptLines.length, feedbackLines.length);
-            const lineHeight = 4.5;
-
-            for (let i = 0; i < maxLines; i++) {
-                // Controllo cambio pagina
-                if (leftY > pageHeight - margin || rightY > pageHeight - margin) {
-                    doc.addPage();
-                    leftY = margin;
-                    rightY = margin;
-                    // Ripeti intestazioni sulla nuova pagina
-                    doc.setFontSize(12);
-                    doc.setFont('helvetica', 'bold');
-                    doc.text('Trascrizione Conversazione (continua)', leftColumnX, leftY);
-                    doc.text('Analisi del Sales Coach (continua)', rightColumnX, leftY);
-                    doc.setFont('helvetica', 'normal');
-                    leftY += 8;
-                    rightY += 8;
-                    doc.setFontSize(9);
-                }
-
-                // Stampa riga colonna sinistra
-                if (i < transcriptLines.length) {
-                    doc.text(transcriptLines[i], leftColumnX, leftY);
-                    leftY += lineHeight;
-                }
-                
-                // Stampa riga colonna destra
-                if (i < feedbackLines.length) {
-                    doc.text(feedbackLines[i], rightColumnX, rightY);
-                    rightY += lineHeight;
-                }
-
-                // Allinea le Y per la riga successiva per mantenere le righe parallele
-                const nextY = Math.max(leftY, rightY);
-                leftY = nextY;
-                rightY = nextY;
-            }
-            
-            doc.save('report-simulazione.pdf');
         }
         
         function setLoading(isLoading) {
@@ -402,5 +412,3 @@
     </script>
 </body>
 </html>
-
-
