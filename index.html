@@ -42,6 +42,16 @@
         .glowing-border {
             box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
         }
+        .gemini-btn {
+            background: linear-gradient(90deg, #4285F4, #9b72cb, #d96570, #f2a600);
+            background-size: 200% 200%;
+            animation: gradient 3s ease infinite;
+        }
+        @keyframes gradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 flex flex-col min-h-screen">
@@ -88,8 +98,12 @@
             </div>
 
             <div>
-                <label for="objections-file" class="block text-sm font-medium text-gray-700">Carica PDF con obiezioni (Opzionale)</label>
-                <input type="file" id="objections-file" accept=".pdf" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                <label class="block text-sm font-medium text-gray-700">Obiezioni del cliente (Opzionale)</label>
+                <div class="mt-1 flex space-x-2">
+                    <input type="file" id="objections-file" accept=".pdf" class="hidden"/>
+                    <label for="objections-file" class="w-full text-sm text-gray-500 p-2 border rounded-md cursor-pointer hover:bg-gray-50 text-center">Carica PDF con obiezioni</label>
+                    <button id="suggest-objections-btn" class="gemini-btn text-white font-bold py-2 px-4 rounded-lg text-sm">✨ Suggerisci Obiezioni</button>
+                </div>
                 <p id="file-status" class="text-xs text-gray-500 mt-1"></p>
             </div>
 
@@ -117,8 +131,9 @@
                     <!-- I messaggi della chat verranno inseriti qui -->
                 </div>
                 
-                <div class="mt-6 flex">
-                    <input type="text" id="user-input" class="flex-grow border-gray-300 rounded-l-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Scrivi la tua risposta..." disabled>
+                <div class="mt-6 flex items-center space-x-2">
+                    <button id="suggest-reply-btn" class="gemini-btn text-white font-bold p-3 rounded-lg text-sm" title="Suggerisci una risposta">✨</button>
+                    <input type="text" id="user-input" class="flex-grow border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Scrivi la tua risposta..." disabled>
                     <button id="send-btn" class="bg-blue-600 text-white font-bold p-3 rounded-r-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" disabled>
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-send"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                     </button>
@@ -186,6 +201,8 @@
         const sendBtn = document.getElementById('send-btn');
         const restartBtn = document.getElementById('restart-btn');
         const downloadPdfBtn = document.getElementById('download-pdf-btn');
+        const suggestObjectionsBtn = document.getElementById('suggest-objections-btn');
+        const suggestReplyBtn = document.getElementById('suggest-reply-btn');
         
         const userInput = document.getElementById('user-input');
         const chatContainer = document.getElementById('chat-container');
@@ -197,6 +214,9 @@
 
         const apiKeyModal = document.getElementById('api-key-modal');
         const closeModalBtn = document.getElementById('close-modal-btn');
+        
+        const fileInput = document.getElementById('objections-file');
+        const fileStatus = document.getElementById('file-status');
 
         let conversationHistory = [];
         let scenario, persona, product, objections;
@@ -206,7 +226,7 @@
         const API_KEY = "AIzaSyA8N5ybnBghEzaoY3ilVZJ6V2KZJIX87Bo";
         const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
         
-        async function callGemini(systemPrompt, userPrompt, currentHistory) {
+        async function callGemini(systemPrompt, userPrompt, currentHistory = []) {
             const payload = {
                 contents: [
                     ...currentHistory.map(item => ({
@@ -240,7 +260,6 @@
         
         // --- FUNZIONE PER LEGGERE PDF ---
         async function readPdfFile(file) {
-            const fileStatus = document.getElementById('file-status');
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = async function() {
@@ -254,24 +273,36 @@
                             const pageText = textContent.items.map(item => item.str).join(' ');
                             fullText += pageText + ' ';
                         }
-                        fileStatus.textContent = `"${file.name}" caricato con successo.`;
-                        fileStatus.style.color = 'green';
                         resolve(fullText.trim());
                     } catch (error) {
                         console.error('Errore durante la lettura del PDF:', error);
-                        fileStatus.textContent = 'Errore: Impossibile leggere il file PDF.';
-                        fileStatus.style.color = 'red';
                         reject('Impossibile leggere il file PDF.');
                     }
                 };
                 reader.onerror = () => {
-                     fileStatus.textContent = 'Errore durante il caricamento del file.';
-                     fileStatus.style.color = 'red';
                      reject('Errore file');
                 }
                 reader.readAsArrayBuffer(file);
             });
         }
+
+        fileInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            fileStatus.textContent = `Caricamento "${file.name}"...`;
+            fileStatus.style.color = 'gray';
+
+            try {
+                objections = await readPdfFile(file);
+                fileStatus.textContent = `File "${file.name}" caricato con successo.`;
+                fileStatus.style.color = 'green';
+            } catch (error) {
+                fileStatus.textContent = 'Errore: Impossibile leggere il file PDF.';
+                fileStatus.style.color = 'red';
+                objections = '';
+            }
+        });
 
         closeModalBtn.addEventListener('click', () => {
             apiKeyModal.classList.add('hidden');
@@ -283,29 +314,9 @@
                 return;
             }
             
-            startBtn.disabled = true;
-            startBtn.textContent = 'Caricamento...';
-
             scenario = document.getElementById('scenario').value;
             persona = document.getElementById('persona').value;
             product = document.getElementById('product').value || "un prodotto/servizio non specificato";
-            
-            const fileInput = document.getElementById('objections-file');
-            const file = fileInput.files[0];
-            objections = '';
-
-            if (file) {
-                try {
-                    objections = await readPdfFile(file);
-                } catch (error) {
-                    startBtn.disabled = false;
-                    startBtn.textContent = 'Inizia Simulazione';
-                    return;
-                }
-            }
-            
-            startBtn.disabled = false;
-            startBtn.textContent = 'Inizia Simulazione';
 
             infoScenario.textContent = scenario;
             infoPersona.textContent = persona;
@@ -329,6 +340,46 @@
         });
         downloadPdfBtn.addEventListener('click', generatePdfReport);
         
+        suggestObjectionsBtn.addEventListener('click', async () => {
+            const currentProduct = document.getElementById('product').value;
+            if (!currentProduct.trim()) {
+                fileStatus.textContent = 'Per favore, descrivi prima il tuo prodotto.';
+                fileStatus.style.color = 'red';
+                return;
+            }
+
+            suggestObjectionsBtn.disabled = true;
+            suggestObjectionsBtn.textContent = '...';
+            fileStatus.textContent = '✨ Sto generando le obiezioni...';
+            fileStatus.style.color = 'purple';
+
+            const systemPrompt = "Sei un esperto di vendite e un cliente difficile. Basandoti sulla seguente descrizione del prodotto, elenca 3-4 obiezioni comuni che un cliente potrebbe sollevare. Rispondi solo con l'elenco delle obiezioni, separate da un a capo.";
+            const userPrompt = `Prodotto: ${currentProduct}`;
+
+            const suggested = await callGemini(systemPrompt, userPrompt);
+            objections = suggested;
+            
+            fileStatus.textContent = 'Obiezioni suggerite dall\'IA caricate!';
+            fileStatus.style.color = 'green';
+            suggestObjectionsBtn.disabled = false;
+            suggestObjectionsBtn.textContent = '✨ Suggerisci Obiezioni';
+        });
+
+        suggestReplyBtn.addEventListener('click', async () => {
+            suggestReplyBtn.disabled = true;
+            userInput.placeholder = "Il coach IA sta pensando a un suggerimento...";
+
+            const transcript = conversationHistory.map(item => `${item.role === 'user' ? 'Venditore' : 'Cliente'}: ${item.parts[0].text}`).join('\n');
+            const systemPrompt = "Sei un coach di vendita di livello mondiale. Analizza la conversazione seguente. Il venditore ha bisogno di aiuto. Suggerisci una risposta breve, efficace e professionale che il venditore possa usare adesso. Rispondi SOLO con il testo della risposta suggerita, senza virgolette o frasi come 'Potresti dire:'.";
+            const userPrompt = `Ecco la conversazione fino ad ora:\n---\n${transcript}\n---`;
+
+            const suggestion = await callGemini(systemPrompt, userPrompt);
+            userInput.value = suggestion;
+            userInput.placeholder = "Scrivi la tua risposta...";
+            suggestReplyBtn.disabled = false;
+            userInput.focus();
+        });
+
         function addMessageToChat(sender, message) {
             const bubble = document.createElement('div');
             bubble.classList.add('chat-bubble', sender === 'user' ? 'user-bubble' : 'ai-bubble');
@@ -340,16 +391,18 @@
         async function startConversation() {
             conversationHistory = [];
             structuredFeedback = null;
+            downloadPdfBtn.classList.add('hidden');
+
             let systemPrompt = `Sei un potenziale cliente. Il tuo nome è Alex. La tua personalità è: ${persona}. Stai partecipando a uno scenario di vendita di tipo '${scenario}' riguardo a questo prodotto: '${product}'. Il tuo obiettivo è rispondere al venditore in modo realistico, basandosi sulla tua personalità. Sii conciso e diretto. Non rivelare mai di essere un'IA.`;
 
             if (objections) {
-                systemPrompt += ` Durante la conversazione, cerca di sollevare una o più delle seguenti obiezioni specifiche, che sono state estratte da un documento: '${objections}'.`;
+                systemPrompt += ` Durante la conversazione, cerca di sollevare una o più delle seguenti obiezioni specifiche: '${objections}'.`;
             }
 
             systemPrompt += ` Inizia tu la conversazione con una frase di apertura appropriata per lo scenario.`;
 
             setLoading(true);
-            const initialResponse = await callGemini(systemPrompt, "Inizia la conversazione.", []);
+            const initialResponse = await callGemini(systemPrompt, "Inizia la conversazione.");
             setLoading(false);
             
             conversationHistory.push({ role: 'model', parts: [{ text: initialResponse }] });
@@ -389,7 +442,7 @@
             const transcript = conversationHistory.map(item => `${item.role === 'user' ? 'Venditore' : 'Cliente'}: ${item.parts[0].text}`).join('\n');
             const feedbackPrompt = `Sei un coach di vendita di fama mondiale. Analizza la seguente trascrizione di un role play di vendita. Fornisci un feedback costruttivo, conciso e facile da capire in ITALIANO. Struttura il feedback in tre sezioni con dei titoli in grassetto: **Punti di Forza**, **Aree di Miglioramento** e **Suggerimenti Pratici**. Sii specifico nei tuoi consigli. Usa elenchi puntati per rendere il feedback più leggibile. Non aggiungere introduzioni o conclusioni superflue, vai dritto al punto.\n\nEcco la trascrizione:\n---\n${transcript}\n---`;
             
-            const feedbackText = await callGemini(feedbackPrompt, "Analizza questa trascrizione.", []);
+            const feedbackText = await callGemini(feedbackPrompt, "Analizza questa trascrizione.");
             
             const formattedFeedback = feedbackText
                 .replace(/\*\*(.*?)\*\*/g, '<h3 class="text-lg font-semibold text-gray-800 mt-4 mb-2">$1</h3>')
@@ -403,10 +456,10 @@
             // Seconda chiamata per il feedback strutturato per il PDF
             const detailedFeedbackPrompt = `Sei un sales coach esperto. Analizza la seguente trascrizione di vendita. Il tuo compito è fornire consigli specifici per ogni blocco della conversazione. Rispondi ESCLUSIVAMENTE con un oggetto JSON valido, senza testo introduttivo o conclusivo. L'oggetto JSON deve essere un array di oggetti. Ogni oggetto deve avere due chiavi: "dialogo" e "consiglio". Nella chiave "dialogo", inserisci una parte della conversazione (uno o due scambi tra Cliente e Venditore). Nella chiave "consiglio", inserisci un consiglio breve e pratico (massimo 2 frasi) relativo a quella specifica parte del dialogo. Ecco la trascrizione:\n---\n${transcript}\n---`;
 
-            const structuredFeedbackText = await callGemini(detailedFeedbackPrompt, "Analizza questa trascrizione per un report dettagliato.", []);
+            const structuredFeedbackText = await callGemini(detailedFeedbackPrompt, "Analizza questa trascrizione per un report dettagliato.");
             try {
                 structuredFeedback = JSON.parse(structuredFeedbackText);
-                downloadPdfBtn.classList.remove('hidden'); // Mostra il pulsante solo se il feedback è pronto
+                downloadPdfBtn.classList.remove('hidden');
             } catch (e) {
                 console.error("Impossibile analizzare il feedback strutturato:", e);
                 structuredFeedback = null;
@@ -444,11 +497,13 @@
                 loadingIndicator.classList.remove('hidden');
                 userInput.disabled = true;
                 sendBtn.disabled = true;
+                suggestReplyBtn.disabled = true;
                 userInput.classList.add('glowing-border');
             } else {
                 loadingIndicator.classList.add('hidden');
                 userInput.disabled = false;
                 sendBtn.disabled = false;
+                suggestReplyBtn.disabled = false;
                 userInput.focus();
                 userInput.classList.remove('glowing-border');
             }
