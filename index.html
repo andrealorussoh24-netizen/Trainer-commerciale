@@ -52,6 +52,9 @@
             50% { background-position: 100% 50%; }
             100% { background-position: 0% 50%; }
         }
+        #persuasion-bar-inner {
+            transition: width 0.5s ease-in-out;
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 flex flex-col min-h-screen">
@@ -125,18 +128,29 @@
                         <strong>Scenario:</strong> <span id="info-scenario"></span> | 
                         <strong>Cliente:</strong> <span id="info-persona"></span>
                     </p>
+                    <div class="mt-4">
+                        <label for="persuasion-bar" class="block text-sm font-medium text-gray-700 mb-1">Barra di Persuasione</label>
+                        <div id="persuasion-bar" class="w-full bg-gray-200 rounded-full h-4">
+                            <div id="persuasion-bar-inner" class="bg-green-500 h-4 rounded-full" style="width: 50%;"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <div id="chat-container" class="h-96 overflow-y-auto flex flex-col space-y-4 pr-2">
                     <!-- I messaggi della chat verranno inseriti qui -->
                 </div>
                 
-                <div class="mt-6 flex items-center space-x-2">
-                    <button id="suggest-reply-btn" class="gemini-btn text-white font-bold p-3 rounded-lg text-sm" title="Suggerisci una risposta">✨</button>
-                    <input type="text" id="user-input" class="flex-grow border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Scrivi la tua risposta..." disabled>
-                    <button id="send-btn" class="bg-blue-600 text-white font-bold p-3 rounded-r-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" disabled>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-send"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-                    </button>
+                 <div class="mt-6">
+                    <div id="win-loss-message" class="text-center p-4 mb-4 rounded-lg hidden"></div>
+                    <div class="flex justify-end mb-2">
+                         <button id="suggest-reply-btn" class="gemini-btn text-white font-bold py-2 px-4 rounded-lg text-sm">✨ Chiedi un suggerimento al Coach IA</button>
+                    </div>
+                    <div class="flex">
+                        <input type="text" id="user-input" class="flex-grow border-gray-300 rounded-l-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Scrivi la tua risposta..." disabled>
+                        <button id="send-btn" class="bg-blue-600 text-white font-bold p-3 rounded-r-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-send"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                        </button>
+                    </div>
                 </div>
                  <div id="loading-indicator" class="hidden text-center mt-2">
                     <p class="text-gray-500 text-sm italic">Il cliente sta pensando...</p>
@@ -211,6 +225,8 @@
 
         const infoScenario = document.getElementById('info-scenario');
         const infoPersona = document.getElementById('info-persona');
+        const persuasionBarInner = document.getElementById('persuasion-bar-inner');
+        const winLossMessage = document.getElementById('win-loss-message');
 
         const apiKeyModal = document.getElementById('api-key-modal');
         const closeModalBtn = document.getElementById('close-modal-btn');
@@ -221,71 +237,16 @@
         let conversationHistory = [];
         let scenario, persona, product, objections;
         let structuredFeedback = null;
+        let persuasionScore = 50; // Punteggio da 0 a 100
+        const WINNING_SCORE = 100;
+        const LOSING_SCORE = 0;
+        let gameOver = false;
 
         // --- INIZIO LOGICA API ---
         const API_KEY = "AIzaSyA8N5ybnBghEzaoY3ilVZJ6V2KZJIX87Bo";
         const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
         
-        async function callGemini(systemPrompt, userPrompt, currentHistory = []) {
-            const payload = {
-                contents: [
-                    ...currentHistory.map(item => ({
-                        role: item.role === 'user' ? 'user' : 'model',
-                        parts: [{ text: item.parts[0].text }]
-                    })),
-                    {
-                        role: 'user',
-                        parts: [{ text: userPrompt }]
-                    }
-                ],
-                systemInstruction: {
-                    parts: [{ text: systemPrompt }]
-                },
-            };
-
-            try {
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                if (!response.ok) throw new Error(`Errore API: ${response.status} ${response.statusText}`);
-                const result = await response.json();
-                return result.candidates[0].content.parts[0].text;
-            } catch (error) {
-                console.error("Errore nella chiamata a Gemini:", error);
-                return "Mi scuso, ma sto riscontrando un problema tecnico e non posso rispondere ora. Controlla che la tua Chiave API sia corretta.";
-            }
-        }
-        
-        // --- FUNZIONE PER LEGGERE PDF ---
-        async function readPdfFile(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = async function() {
-                    try {
-                        const typedarray = new Uint8Array(this.result);
-                        const pdf = await pdfjsLib.getDocument(typedarray).promise;
-                        let fullText = '';
-                        for (let i = 1; i <= pdf.numPages; i++) {
-                            const page = await pdf.getPage(i);
-                            const textContent = await page.getTextContent();
-                            const pageText = textContent.items.map(item => item.str).join(' ');
-                            fullText += pageText + ' ';
-                        }
-                        resolve(fullText.trim());
-                    } catch (error) {
-                        console.error('Errore durante la lettura del PDF:', error);
-                        reject('Impossibile leggere il file PDF.');
-                    }
-                };
-                reader.onerror = () => {
-                     reject('Errore file');
-                }
-                reader.readAsArrayBuffer(file);
-            });
-        }
-
+        // --- BLOCCO EVENT LISTENERS CORRETTO ---
         fileInput.addEventListener('change', async (event) => {
             const file = event.target.files[0];
             if (!file) return;
@@ -380,6 +341,119 @@
             userInput.focus();
         });
 
+
+        async function callGemini(systemPrompt, userPrompt, currentHistory = []) {
+            // Non permettere chiamate se il gioco è finito, tranne per il feedback
+            if (gameOver && !systemPrompt.includes('coach di vendita')) return;
+            const payload = {
+                contents: [
+                    ...currentHistory.map(item => ({
+                        role: item.role === 'user' ? 'user' : 'model',
+                        parts: [{ text: item.parts[0].text }]
+                    })),
+                    {
+                        role: 'user',
+                        parts: [{ text: userPrompt }]
+                    }
+                ],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+            };
+
+            // --- NUOVA LOGICA DI RETRY CON EXPONENTIAL BACKOFF ---
+            const maxRetries = 3; // Prova fino a 3 volte
+            let delay = 1000; // Inizia con 1 secondo di attesa
+
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) { // Se la chiamata ha successo
+                        const result = await response.json();
+                        if (result.candidates && result.candidates.length > 0) {
+                             return result.candidates[0].content.parts[0].text;
+                        }
+                        return "L'IA non ha fornito una risposta valida.";
+                    }
+                    
+                    // Se l'errore è 503 o simile, non è un errore "fatale", quindi proviamo di nuovo
+                    if (response.status === 503 || response.status === 429) {
+                        console.warn(`Tentativo ${i + 1} fallito con stato ${response.status}. Riprovo tra ${delay / 1000}s...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay *= 2; // Raddoppia l'attesa per il prossimo tentativo
+                        continue; // Passa al prossimo tentativo
+                    }
+                    
+                    // Per altri errori (es. 400), lancia subito l'errore perché un retry non aiuterà
+                    throw new Error(`Errore API: ${response.status} ${response.statusText}`);
+
+                } catch (error) {
+                    console.error(`Errore nel tentativo ${i + 1}:`, error);
+                     if (i === maxRetries - 1) { // Se è l'ultimo tentativo, mostra l'errore finale
+                         return "Mi scuso, ma sto riscontrando un problema tecnico e non posso rispondere ora. Controlla che la tua Chiave API sia corretta.";
+                     }
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
+                }
+            }
+            return "Si è verificato un errore dopo multipli tentativi. Riprova più tardi.";
+        }
+
+        async function evaluateSalespersonMove(transcript) {
+            const systemPrompt = "Sei un sales coach esperto che agisce come un giudice. Analizza l'ultima risposta del 'Venditore' nella trascrizione. Basandoti su tecniche di vendita efficaci (costruire rapporto, fare domande aperte, gestire obiezioni, creare valore), decidi se la propensione del cliente all'acquisto dovrebbe aumentare, diminuire o rimanere invariata. Rispondi ESCLUSIVAMENTE con una delle seguenti parole: 'AUMENTA', 'DIMINUISCI', 'INVARIATO'.";
+            const evaluation = await callGemini(systemPrompt, `Ecco la trascrizione:\n---\n${transcript}\n---`);
+            
+            if (evaluation.includes('AUMENTA')) {
+                persuasionScore = Math.min(WINNING_SCORE, persuasionScore + 15);
+            } else if (evaluation.includes('DIMINUISCI')) {
+                persuasionScore = Math.max(LOSING_SCORE, persuasionScore - 10);
+            }
+            updatePersuasionBar();
+        }
+
+        function updatePersuasionBar() {
+            persuasionBarInner.style.width = `${persuasionScore}%`;
+            if (persuasionScore > 66) {
+                persuasionBarInner.className = 'bg-green-500 h-4 rounded-full';
+            } else if (persuasionScore > 33) {
+                 persuasionBarInner.className = 'bg-yellow-500 h-4 rounded-full';
+            } else {
+                 persuasionBarInner.className = 'bg-red-500 h-4 rounded-full';
+            }
+        }
+        
+        async function readPdfFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = async function() {
+                    try {
+                        const typedarray = new Uint8Array(this.result);
+                        const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                        let fullText = '';
+                        for (let i = 1; i <= pdf.numPages; i++) {
+                            const page = await pdf.getPage(i);
+                            const textContent = await page.getTextContent();
+                            const pageText = textContent.items.map(item => item.str).join(' ');
+                            fullText += pageText + ' ';
+                        }
+                        resolve(fullText.trim());
+                    } catch (error) {
+                        console.error('Errore durante la lettura del PDF:', error);
+                        reject('Impossibile leggere il file PDF.');
+                    }
+                };
+                reader.onerror = () => {
+                     reject('Errore file');
+                }
+                reader.readAsArrayBuffer(file);
+            });
+        }
+        
         function addMessageToChat(sender, message) {
             const bubble = document.createElement('div');
             bubble.classList.add('chat-bubble', sender === 'user' ? 'user-bubble' : 'ai-bubble');
@@ -388,18 +462,83 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
 
+        async function handleUserMessage() {
+            if (gameOver) return;
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            addMessageToChat('user', message);
+            conversationHistory.push({ role: 'user', parts: [{ text: message }] });
+            userInput.value = '';
+            setLoading(true);
+
+            const transcriptForEvaluation = conversationHistory.map(item => `${item.role === 'user' ? 'Venditore' : 'Cliente'}: ${item.parts[0].text}`).join('\n');
+            await evaluateSalespersonMove(transcriptForEvaluation);
+
+            if (persuasionScore >= WINNING_SCORE) {
+                handleWin();
+                return;
+            }
+            if (persuasionScore <= LOSING_SCORE) {
+                handleLoss();
+                return;
+            }
+            
+            let systemPrompt = `Sei un potenziale cliente di nome Alex. La tua personalità è: ${persona}. Il tuo attuale livello di interesse/propensione all'acquisto è ${persuasionScore} su 100. Modula la tua risposta in base a questo valore. Se il valore è alto (>66), sii più collaborativo e positivo. Se è basso (<33), sii più resistente o evasivo. Rispondi in modo realistico. Non rivelare mai di essere un'IA.`;
+
+            if (objections) {
+                systemPrompt += ` Ricorda di usare le obiezioni che ti sono state date, se pertinenti: '${objections}'.`;
+            }
+            
+            const aiResponse = await callGemini(systemPrompt, message, conversationHistory);
+            setLoading(false);
+            
+            addMessageToChat('ai', aiResponse);
+            conversationHistory.push({ role: 'model', parts: [{ text: aiResponse }] });
+        }
+        
+        function handleWin() {
+            gameOver = true;
+            const winText = "Ottimo lavoro! Mi hai convinto. Procediamo pure, mandami la proposta.";
+            addMessageToChat('ai', winText);
+            conversationHistory.push({ role: 'model', parts: [{ text: winText }] });
+            winLossMessage.textContent = 'OBIETTIVO RAGGIUNTO! Hai convinto il cliente.';
+            winLossMessage.className = 'text-center p-4 mb-4 rounded-lg bg-green-100 text-green-800';
+            winLossMessage.classList.remove('hidden');
+            setLoading(false);
+            userInput.disabled = true;
+            sendBtn.disabled = true;
+            suggestReplyBtn.disabled = true;
+        }
+
+        function handleLoss() {
+            gameOver = true;
+            const lossText = "Senti, ti ringrazio per il tempo ma non credo che questo faccia per me. Buona giornata.";
+            addMessageToChat('ai', lossText);
+            conversationHistory.push({ role: 'model', parts: [{ text: lossText }] });
+            winLossMessage.textContent = 'PERSUASIONE FALLITA. Il cliente ha perso interesse.';
+            winLossMessage.className = 'text-center p-4 mb-4 rounded-lg bg-red-100 text-red-800';
+            winLossMessage.classList.remove('hidden');
+            setLoading(false);
+            userInput.disabled = true;
+            sendBtn.disabled = true;
+            suggestReplyBtn.disabled = true;
+        }
+        
         async function startConversation() {
             conversationHistory = [];
             structuredFeedback = null;
+            gameOver = false;
+            persuasionScore = 50;
+            updatePersuasionBar();
+            winLossMessage.classList.add('hidden');
             downloadPdfBtn.classList.add('hidden');
 
-            let systemPrompt = `Sei un potenziale cliente. Il tuo nome è Alex. La tua personalità è: ${persona}. Stai partecipando a uno scenario di vendita di tipo '${scenario}' riguardo a questo prodotto: '${product}'. Il tuo obiettivo è rispondere al venditore in modo realistico, basandosi sulla tua personalità. Sii conciso e diretto. Non rivelare mai di essere un'IA.`;
-
+            let systemPrompt = `Sei un potenziale cliente. Il tuo nome è Alex. La tua personalità è: ${persona}. Stai partecipando a uno scenario di vendita di tipo '${scenario}' riguardo a questo prodotto: '${product}'. Il tuo obiettivo è rispondere al venditore in modo realistico, basandosi sulla tua personalità. Il tuo livello di interesse iniziale è 50 su 100. Sii conciso e diretto. Non rivelare mai di essere un'IA. Inizia tu la conversazione con una frase di apertura appropriata per lo scenario.`;
+            
             if (objections) {
                 systemPrompt += ` Durante la conversazione, cerca di sollevare una o più delle seguenti obiezioni specifiche: '${objections}'.`;
             }
-
-            systemPrompt += ` Inizia tu la conversazione con una frase di apertura appropriata per lo scenario.`;
 
             setLoading(true);
             const initialResponse = await callGemini(systemPrompt, "Inizia la conversazione.");
@@ -412,31 +551,9 @@
             sendBtn.disabled = false;
             userInput.focus();
         }
-
-        async function handleUserMessage() {
-            const message = userInput.value.trim();
-            if (!message) return;
-
-            addMessageToChat('user', message);
-            conversationHistory.push({ role: 'user', parts: [{ text: message }] });
-            userInput.value = '';
-
-            let systemPrompt = `Sei un potenziale cliente di nome Alex. La tua personalità è: ${persona}. Stai partecipando a uno scenario di vendita di tipo '${scenario}' riguardo a questo prodotto: '${product}'. Rispondi in modo realistico. Sii conciso e diretto. Non rivelare mai di essere un'IA.`;
-
-            if (objections) {
-                systemPrompt += ` Ricorda di usare le obiezioni che ti sono state date, se pertinenti: '${objections}'.`;
-            }
-            
-            setLoading(true);
-            const aiResponse = await callGemini(systemPrompt, message, conversationHistory);
-            setLoading(false);
-            
-            addMessageToChat('ai', aiResponse);
-            conversationHistory.push({ role: 'model', parts: [{ text: aiResponse }] });
-        }
         
         async function getFeedback() {
-            simulationScreen.classList.add('hidden');
+             simulationScreen.classList.add('hidden');
             feedbackScreen.classList.remove('hidden');
 
             const transcript = conversationHistory.map(item => `${item.role === 'user' ? 'Venditore' : 'Cliente'}: ${item.parts[0].text}`).join('\n');
@@ -501,10 +618,13 @@
                 userInput.classList.add('glowing-border');
             } else {
                 loadingIndicator.classList.add('hidden');
-                userInput.disabled = false;
-                sendBtn.disabled = false;
-                suggestReplyBtn.disabled = false;
-                userInput.focus();
+                // Non riabilitare se il gioco è finito
+                if (!gameOver) {
+                    userInput.disabled = false;
+                    sendBtn.disabled = false;
+                    suggestReplyBtn.disabled = false;
+                    userInput.focus();
+                }
                 userInput.classList.remove('glowing-border');
             }
         }
